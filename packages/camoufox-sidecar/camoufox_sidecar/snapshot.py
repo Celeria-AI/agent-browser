@@ -86,7 +86,7 @@ CONTENT_ROLES_WITH_NAMES: frozenset[str] = frozenset(
 # attribute away, and any mutation (navigation, innerHTML overwrite) is covered
 # by the ``framenavigated`` invalidation.
 _SNAPSHOT_JS = r"""
-(({ interactiveRoles, contentRolesWithNames }) => {
+((root, { interactiveRoles, contentRolesWithNames }) => {
   const IMPLICIT_ROLES = {
     'a': 'link',
     'button': 'button',
@@ -161,12 +161,20 @@ _SNAPSHOT_JS = r"""
     return null;
   };
 
-  // Clear previous ref markers so nth call produces deterministic results.
+  // Clear previous ref markers across the whole document so subsequent
+  // calls produce deterministic results regardless of scope.
   document.querySelectorAll('[data-__ab-ref]').forEach((n) => n.removeAttribute('data-__ab-ref'));
 
   const results = [];
   let counter = 0;
-  const all = document.querySelectorAll('*');
+  // Include ``root`` itself so a scoped snapshot considers the scope
+  // element (e.g. a <button> passed as ``selector``) and not only its
+  // descendants. For the unscoped call site we pass
+  // ``document.documentElement`` — its descendants cover everything
+  // interactive without emitting a ref for the <html> element.
+  const all = root === document.documentElement
+    ? root.querySelectorAll('*')
+    : [root, ...root.querySelectorAll('*')];
   for (const el of all) {
     const role = roleFor(el);
     if (!role) continue;
@@ -262,10 +270,10 @@ async def take_snapshot(
     ref_cache.invalidate()
 
     if selector:
-        # Scope the walker to the subtree rooted at ``selector``. We inject a
-        # marker attribute on the root and have the JS restrict ``all`` to its
-        # descendants. This avoids evaluating a second JS function across the
-        # whole tree.
+        # Scope the walker to the subtree rooted at ``selector``. We pass the
+        # matching element into the JS as ``root``; the walker enumerates the
+        # root plus its descendants, so interactive elements outside the
+        # subtree are excluded from the returned refs.
         scope_root = await page.query_selector(selector)
         if scope_root is None:
             raise SnapshotError(
@@ -273,24 +281,29 @@ async def take_snapshot(
                 f"Selector {selector!r} did not match any element",
             )
         entries = await scope_root.evaluate(
-            f"(root) => ({_SNAPSHOT_JS})({{ interactiveRoles: {_role_list(INTERACTIVE_ROLES)}, contentRolesWithNames: {_role_list(CONTENT_ROLES_WITH_NAMES)} }})",
+            f"(root) => ({_SNAPSHOT_JS})(root, {{ interactiveRoles: {_role_list(INTERACTIVE_ROLES)}, contentRolesWithNames: {_role_list(CONTENT_ROLES_WITH_NAMES)} }})",
         )
     else:
         entries = await page.evaluate(
-            f"() => ({_SNAPSHOT_JS})({{ interactiveRoles: {_role_list(INTERACTIVE_ROLES)}, contentRolesWithNames: {_role_list(CONTENT_ROLES_WITH_NAMES)} }})",
+            f"() => ({_SNAPSHOT_JS})(document.documentElement, {{ interactiveRoles: {_role_list(INTERACTIVE_ROLES)}, contentRolesWithNames: {_role_list(CONTENT_ROLES_WITH_NAMES)} }})",
         )
 
     if interactive_only:
         entries = [e for e in entries if e.get("role") in INTERACTIVE_ROLES]
         # Re-assign refs so the agent-facing numbering stays contiguous.
+        # Preserve the DOM-side ref the JS walker stamped as
+        # ``data-__ab-ref``; filtering changed our numbering but the
+        # attribute values on the elements are still the pre-filter
+        # counter, so ``query_selector`` below must query by that.
         for new_idx, entry in enumerate(entries, start=1):
+            entry["_dom_ref"] = entry["ref"]
             entry["ref"] = f"e{new_idx}"
 
     # Resolve each ref back to a live ElementHandle so subsequent click/fill
     # calls can reach the element without re-running the JS walker.
     for entry in entries:
-        ref_id = entry["ref"]
-        handle = await page.query_selector(f"[data-__ab-ref='{ref_id}']")
+        dom_ref = entry.get("_dom_ref", entry["ref"])
+        handle = await page.query_selector(f"[data-__ab-ref='{dom_ref}']")
         if handle is None:
             # Element vanished between the walker and this query_selector —
             # extremely rare but possible under a script that re-renders
