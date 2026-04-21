@@ -232,11 +232,7 @@ mod integration {
         let email_token = format!("@{}", email_ref);
         let submit_token = format!("@{}", submit_ref);
 
-        let _ = run_json(
-            &tmp,
-            session,
-            &["fill", &email_token, "test@example.com"],
-        );
+        let _ = run_json(&tmp, session, &["fill", &email_token, "test@example.com"]);
         let _ = run_json(&tmp, session, &["click", &submit_token]);
 
         let status = run_json(&tmp, session, &["get", "text", "#status"]);

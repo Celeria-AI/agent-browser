@@ -89,7 +89,13 @@ mod rust_only {
         let tmp = TempDir::new().unwrap();
         let output = build_cmd(
             &tmp,
-            &["--engine", "camoufox", "--json", "open", "https://example.com"],
+            &[
+                "--engine",
+                "camoufox",
+                "--json",
+                "open",
+                "https://example.com",
+            ],
         )
         .env("AGENT_BROWSER_CAMOUFOX_PYTHON", "/nonexistent/python3-xyz")
         .output()
@@ -97,8 +103,7 @@ mod rust_only {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            stdout.contains("does not exist")
-                || stdout.contains("AGENT_BROWSER_CAMOUFOX_PYTHON"),
+            stdout.contains("does not exist") || stdout.contains("AGENT_BROWSER_CAMOUFOX_PYTHON"),
             "expected python-not-found error, got: {}",
             stdout
         );
@@ -138,8 +143,7 @@ mod integration {
         // a new environment per run.
         let crate_root = env!("CARGO_MANIFEST_DIR");
         let repo_root = std::path::Path::new(crate_root).parent()?;
-        let venv_python = repo_root
-            .join("packages/camoufox-sidecar/.venv/bin/python3");
+        let venv_python = repo_root.join("packages/camoufox-sidecar/.venv/bin/python3");
         if venv_python.is_file() {
             return Some(venv_python);
         }

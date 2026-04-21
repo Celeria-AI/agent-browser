@@ -139,7 +139,9 @@ impl BrowserBackend {
 impl std::fmt::Debug for BrowserBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BrowserBackend::Cdp(_) => f.debug_struct("BrowserBackend::Cdp").finish_non_exhaustive(),
+            BrowserBackend::Cdp(_) => f
+                .debug_struct("BrowserBackend::Cdp")
+                .finish_non_exhaustive(),
             BrowserBackend::Camoufox(_) => f
                 .debug_struct("BrowserBackend::Camoufox")
                 .finish_non_exhaustive(),

@@ -75,7 +75,12 @@ pub(super) fn check(checks: &mut Vec<Check>) {
             format!("camoufox browser binary at {}", path),
         )),
         ProbeOutcome::Missing(reason) => {
-            push_not_available(checks, "camoufox.binary", &reason, "python3 -m camoufox fetch");
+            push_not_available(
+                checks,
+                "camoufox.binary",
+                &reason,
+                "python3 -m camoufox fetch",
+            );
         }
     }
 }

@@ -1277,11 +1277,7 @@ pub async fn execute_command(cmd: &Value, state: &mut DaemonState) -> Value {
                 state.update_stream_client().await;
             }
             if let Err(e) = auto_launch(state).await {
-                return error_response(
-                    &id,
-                    &format!("Auto-launch failed: {}", e),
-                    &state.engine,
-                );
+                return error_response(&id, &format!("Auto-launch failed: {}", e), &state.engine);
             }
         }
 
@@ -2514,14 +2510,8 @@ fn mirror_camoufox_refs_into(result: &Value, ref_map: &mut RefMap) {
         return;
     };
     for (ref_id, entry) in refs {
-        let role = entry
-            .get("role")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let name = entry
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let role = entry.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("");
         ref_map.add(ref_id.clone(), None, role, name, None);
     }
 }
@@ -2599,10 +2589,7 @@ async fn handle_screenshot(cmd: &Value, state: &mut DaemonState) -> Result<Value
         if let Some(q) = cmd.get("quality").and_then(|v| v.as_i64()) {
             args["quality"] = json!(q);
         }
-        let result = mgr
-            .camoufox_client()
-            .call("page.screenshot", args)
-            .await?;
+        let result = mgr.camoufox_client().call("page.screenshot", args).await?;
         // Shape the response to match the Chrome path so CLI consumers
         // don't need to switch on engine. ``annotations`` is intentionally
         // omitted — the `annotate` path above already rejects upstream.
@@ -2697,7 +2684,8 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
         let new_tab = cmd.get("newTab").and_then(|v| v.as_bool()).unwrap_or(false);
         if new_tab {
             return Err(
-                "not-yet-supported: --new-tab is not yet wired through the Camoufox engine".to_string(),
+                "not-yet-supported: --new-tab is not yet wired through the Camoufox engine"
+                    .to_string(),
             );
         }
         let args = json!({
@@ -2867,7 +2855,8 @@ async fn handle_press(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
     // Parse modifier+key chords like "Control+a", "Shift+Enter", "Control+Shift+a"
     let (actual_key, modifiers) = parse_key_chord(key);
 
-    interaction::press_key_with_modifiers(&mgr.backend, &session_id, &actual_key, modifiers).await?;
+    interaction::press_key_with_modifiers(&mgr.backend, &session_id, &actual_key, modifiers)
+        .await?;
     Ok(json!({ "pressed": key }))
 }
 

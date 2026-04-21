@@ -24,8 +24,7 @@
 //!
 //! - `invalid-frame`            — malformed JSON on the wire
 //! - `not-yet-supported`        — unknown command (post-Unit 3 this is the
-//!                                dominant failure while more commands are
-//!                                ported in Units 4–5)
+//!   dominant failure while more commands are ported in Units 4–5)
 //! - `invalid-args`             — well-formed frame with a bad args shape
 //! - `unknown-launch-option`    — launch kwarg not on the sidecar's allowlist
 //! - `unsupported-launch-option` — explicitly rejected launch kwarg
@@ -89,16 +88,15 @@ impl CamoufoxClient {
         // either a protocol bug on the sidecar side or a premature exit,
         // both of which we treat as a readiness failure so the error is
         // actionable.
-        let ready_line =
-            tokio::time::timeout(ready_timeout, read_one_nonblank_line(&mut reader))
-                .await
-                .map_err(|_| {
-                    format!(
-                        "timed out after {}ms waiting for camoufox-sidecar `ready` event",
-                        ready_timeout.as_millis()
-                    )
-                })?
-                .map_err(|e| format!("reading first sidecar frame: {}", e))?;
+        let ready_line = tokio::time::timeout(ready_timeout, read_one_nonblank_line(&mut reader))
+            .await
+            .map_err(|_| {
+                format!(
+                    "timed out after {}ms waiting for camoufox-sidecar `ready` event",
+                    ready_timeout.as_millis()
+                )
+            })?
+            .map_err(|e| format!("reading first sidecar frame: {}", e))?;
 
         let ready_frame: Value = serde_json::from_str(&ready_line).map_err(|e| {
             format!(
@@ -112,7 +110,8 @@ impl CamoufoxClient {
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let shutdown = Arc::new(tokio::sync::Notify::new());
 
-        let reader_task = spawn_reader(reader, pending.clone(), events_tx.clone(), shutdown.clone());
+        let reader_task =
+            spawn_reader(reader, pending.clone(), events_tx.clone(), shutdown.clone());
 
         let client = Arc::new(Self {
             writer: tokio::sync::Mutex::new(stdin),
@@ -129,7 +128,8 @@ impl CamoufoxClient {
     /// `DEFAULT_CALL_TIMEOUT` so a misbehaving sidecar cannot wedge a caller
     /// indefinitely.
     pub async fn call(&self, cmd: &str, args: Value) -> Result<Value, String> {
-        self.call_with_timeout(cmd, args, DEFAULT_CALL_TIMEOUT).await
+        self.call_with_timeout(cmd, args, DEFAULT_CALL_TIMEOUT)
+            .await
     }
 
     pub async fn call_with_timeout(
@@ -260,12 +260,7 @@ fn parse_ready_frame(frame: &Value) -> Result<Option<u32>, String> {
     let event = frame
         .get("event")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            format!(
-                "expected first frame to be a ready event, got: {}",
-                frame
-            )
-        })?;
+        .ok_or_else(|| format!("expected first frame to be a ready event, got: {}", frame))?;
     if event != "ready" {
         return Err(format!(
             "expected first frame to be `ready`, got event `{}`",
@@ -469,11 +464,7 @@ mod tests {
         let (events_tx, _) = broadcast::channel::<CamoufoxEvent>(8);
 
         // Should not panic or crash.
-        dispatch_frame(
-            r#"{"id":999,"ok":true,"result":{}}"#,
-            &pending,
-            &events_tx,
-        );
+        dispatch_frame(r#"{"id":999,"ok":true,"result":{}}"#, &pending, &events_tx);
         assert!(pending.lock().unwrap().is_empty());
     }
 }

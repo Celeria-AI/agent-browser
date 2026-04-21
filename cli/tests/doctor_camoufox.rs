@@ -41,10 +41,7 @@ fn parse_doctor_json(stdout: &[u8]) -> serde_json::Value {
     })
 }
 
-fn checks_by_id<'a>(
-    payload: &'a serde_json::Value,
-    id: &str,
-) -> Vec<&'a serde_json::Value> {
+fn checks_by_id<'a>(payload: &'a serde_json::Value, id: &str) -> Vec<&'a serde_json::Value> {
     payload["checks"]
         .as_array()
         .expect("checks is array")
@@ -157,8 +154,7 @@ fn doctor_missing_python_reports_distinct_reason() {
     assert_eq!(python[0]["status"].as_str(), Some("info"));
     let msg = python[0]["message"].as_str().unwrap();
     assert!(
-        msg.contains("camoufox: not available")
-            && msg.contains("python3 not found"),
+        msg.contains("camoufox: not available") && msg.contains("python3 not found"),
         "missing-python reason should be distinct, got: {}",
         msg
     );
@@ -330,7 +326,13 @@ fn chrome_json_payload_carries_engine_label() {
     // `error_response` which carries the engine label.
     let output = build_doctor_cmd(
         &tmp,
-        &["--engine", "chrome", "--json", "navigate", "https://example.com"],
+        &[
+            "--engine",
+            "chrome",
+            "--json",
+            "navigate",
+            "https://example.com",
+        ],
     )
     // Prevent the daemon from finding a real Chrome install — forces a
     // structured error rather than actually launching a browser.

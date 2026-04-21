@@ -153,11 +153,7 @@ mod integration {
             .expect("tabs array");
         let ids: Vec<String> = tabs
             .iter()
-            .filter_map(|t| {
-                t.get("tabId")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string)
-            })
+            .filter_map(|t| t.get("tabId").and_then(|v| v.as_str()).map(str::to_string))
             .collect();
         assert_eq!(ids, vec!["t1".to_string(), "t2".to_string()]);
     }
@@ -170,9 +166,17 @@ mod integration {
         let session = "cam_tabs_never_reuse";
         open_blank(&tmp, session);
 
-        let _ = run_json(&tmp, session, &["tab", "new", "data:text/html,<html>t2</html>"]);
+        let _ = run_json(
+            &tmp,
+            session,
+            &["tab", "new", "data:text/html,<html>t2</html>"],
+        );
         let _ = run_json(&tmp, session, &["tab", "close", "t2"]);
-        let created = run_json(&tmp, session, &["tab", "new", "data:text/html,<html>t3</html>"]);
+        let created = run_json(
+            &tmp,
+            session,
+            &["tab", "new", "data:text/html,<html>t3</html>"],
+        );
         close(&tmp, session);
 
         let new_id = created
@@ -228,11 +232,7 @@ mod integration {
         let _ = run_json(
             &tmp,
             session,
-            &[
-                "screenshot",
-                "--full",
-                full_path.to_str().unwrap(),
-            ],
+            &["screenshot", "--full", full_path.to_str().unwrap()],
         );
         close(&tmp, session);
 

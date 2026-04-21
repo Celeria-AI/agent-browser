@@ -115,9 +115,7 @@ impl CamoufoxProcess {
             let start = std::time::Instant::now();
             while start.elapsed() < timeout {
                 let mut status: libc::c_int = 0;
-                let ret = unsafe {
-                    libc::waitpid(pid as libc::pid_t, &mut status, libc::WNOHANG)
-                };
+                let ret = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, libc::WNOHANG) };
                 if ret == pid as libc::pid_t || ret == -1 {
                     return;
                 }
@@ -176,9 +174,7 @@ impl Drop for CamoufoxProcess {
             let mut reaped = false;
             while start.elapsed() < DROP_GRACEFUL_WAIT {
                 let mut status: libc::c_int = 0;
-                let ret = unsafe {
-                    libc::waitpid(pid as libc::pid_t, &mut status, libc::WNOHANG)
-                };
+                let ret = unsafe { libc::waitpid(pid as libc::pid_t, &mut status, libc::WNOHANG) };
                 if ret == pid as libc::pid_t {
                     reaped = true;
                     break;

@@ -1550,9 +1550,14 @@ impl BrowserManager {
     ) -> Result<(), String> {
         let session_id = self.active_session_id()?;
 
-        let (object_id, effective_session_id) =
-            resolve_element_object_id(&self.backend, session_id, ref_map, selector, iframe_sessions)
-                .await?;
+        let (object_id, effective_session_id) = resolve_element_object_id(
+            &self.backend,
+            session_id,
+            ref_map,
+            selector,
+            iframe_sessions,
+        )
+        .await?;
 
         let describe: Value = self
             .client()
@@ -1814,10 +1819,7 @@ impl BrowserManager {
         }))
     }
 
-    pub async fn camoufox_tab_close(
-        &mut self,
-        tab_id: Option<u32>,
-    ) -> Result<Value, String> {
+    pub async fn camoufox_tab_close(&mut self, tab_id: Option<u32>) -> Result<Value, String> {
         let target_index = match tab_id {
             Some(id) => self
                 .pages
@@ -1855,7 +1857,6 @@ impl BrowserManager {
             "closed": true,
         }))
     }
-
 }
 
 /// Core network-idle polling loop, extracted so it can be unit-tested without a

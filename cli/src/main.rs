@@ -1170,10 +1170,7 @@ fn main() {
                     let output_opts = OutputOptions::from_flags(&flags);
                     print_response_with_opts(&resp, None, &output_opts);
                 } else {
-                    let error_msg = resp
-                        .error
-                        .as_deref()
-                        .unwrap_or("Browser launch failed");
+                    let error_msg = resp.error.as_deref().unwrap_or("Browser launch failed");
                     eprintln!("{} {}", color::error_indicator(), error_msg);
                 }
                 exit(1);

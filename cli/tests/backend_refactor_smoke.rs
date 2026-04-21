@@ -54,7 +54,13 @@ fn camoufox_engine_returns_structured_error_without_panic() {
     // CI will otherwise spend minutes in the Python probe.
     let output = build_cmd(
         &tmp,
-        &["--engine", "camoufox", "--json", "open", "https://example.com"],
+        &[
+            "--engine",
+            "camoufox",
+            "--json",
+            "open",
+            "https://example.com",
+        ],
     )
     .env(
         "AGENT_BROWSER_CAMOUFOX_PYTHON",
@@ -112,7 +118,13 @@ fn unknown_engine_lists_camoufox_in_supported_engines() {
 
     let output = build_cmd(
         &tmp,
-        &["--engine", "nonsense", "--json", "open", "https://example.com"],
+        &[
+            "--engine",
+            "nonsense",
+            "--json",
+            "open",
+            "https://example.com",
+        ],
     )
     .output()
     .expect("failed to invoke agent-browser");
