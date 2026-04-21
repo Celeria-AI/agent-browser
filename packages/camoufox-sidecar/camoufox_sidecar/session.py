@@ -564,6 +564,106 @@ class Session:
             )
         return {"text": text, "origin": _safe_page_url(tab.page), "tabId": tab.tab_id}
 
+    async def scroll(self, args: Optional[dict] = None) -> dict:
+        """Scroll the page or an element by ``(x, y)`` pixels.
+
+        Parity shape with the Chrome path: ``selector`` is optional; when
+        absent we scroll ``window``, when present we scroll the matched
+        element's own scroll container (via ``el.scrollBy``). The Rust side
+        pre-normalises ``direction`` + ``amount`` into ``x`` / ``y``, so the
+        sidecar only sees deltas.
+        """
+        args = args or {}
+        selector_or_ref = args.get("selector")
+        dx = float(args.get("x", 0) or 0)
+        dy = float(args.get("y", 0) or 0)
+
+        tab = await self._tab_for(args)
+
+        if selector_or_ref is None or selector_or_ref == "":
+            try:
+                await tab.page.evaluate(
+                    "([dx, dy]) => window.scrollBy(dx, dy)", [dx, dy]
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise LaunchError("action-failed", str(exc)) from exc
+            return {"scrolled": True, "tabId": tab.tab_id}
+
+        ref_id = parse_ref(selector_or_ref)
+        if ref_id is not None:
+            handle = _require_ref(tab, ref_id)
+            try:
+                await handle.evaluate(
+                    "(el, [dx, dy]) => el.scrollBy(dx, dy)", [dx, dy]
+                )
+            except Exception as exc:  # noqa: BLE001
+                raise _classify_playwright_error(exc, "<ref>") from exc
+            return {"scrolled": True, "tabId": tab.tab_id}
+
+        locator = tab.page.locator(selector_or_ref)
+        try:
+            count = await locator.count()
+        except Exception as exc:  # noqa: BLE001
+            raise _classify_playwright_error(exc, selector_or_ref) from exc
+        if count == 0:
+            raise LaunchError(
+                "selector-not-found",
+                f"Selector {selector_or_ref!r} did not match any element",
+            )
+        if count > 1:
+            raise LaunchError(
+                "ambiguous-selector",
+                f"Selector {selector_or_ref!r} matched {count} elements; refine it or use a ref",
+            )
+        try:
+            await locator.evaluate("(el, [dx, dy]) => el.scrollBy(dx, dy)", [dx, dy])
+        except Exception as exc:  # noqa: BLE001
+            raise _classify_playwright_error(exc, selector_or_ref) from exc
+        return {"scrolled": True, "tabId": tab.tab_id}
+
+    async def scroll_into_view(self, args: Optional[dict] = None) -> dict:
+        """Scroll ``selector`` into view, centred.
+
+        Mirrors the Chrome path's ``scrollIntoView({block:'center', inline:'center'})``
+        rather than using Playwright's looser ``scroll_into_view_if_needed``,
+        so behaviour matches across engines for the same selector.
+        """
+        args = args or {}
+        selector_or_ref = _require_str(args, "selector")
+
+        tab = await self._tab_for(args)
+        js = "el => el.scrollIntoView({ block: 'center', inline: 'center' })"
+
+        ref_id = parse_ref(selector_or_ref)
+        if ref_id is not None:
+            handle = _require_ref(tab, ref_id)
+            try:
+                await handle.evaluate(js)
+            except Exception as exc:  # noqa: BLE001
+                raise _classify_playwright_error(exc, "<ref>") from exc
+            return {"scrolled": selector_or_ref, "tabId": tab.tab_id}
+
+        locator = tab.page.locator(selector_or_ref)
+        try:
+            count = await locator.count()
+        except Exception as exc:  # noqa: BLE001
+            raise _classify_playwright_error(exc, selector_or_ref) from exc
+        if count == 0:
+            raise LaunchError(
+                "selector-not-found",
+                f"Selector {selector_or_ref!r} did not match any element",
+            )
+        if count > 1:
+            raise LaunchError(
+                "ambiguous-selector",
+                f"Selector {selector_or_ref!r} matched {count} elements; refine it or use a ref",
+            )
+        try:
+            await locator.evaluate(js)
+        except Exception as exc:  # noqa: BLE001
+            raise _classify_playwright_error(exc, selector_or_ref) from exc
+        return {"scrolled": selector_or_ref, "tabId": tab.tab_id}
+
     async def _tab_for(self, args: dict) -> Tab:
         tab_id = args.get("tabId")
         if isinstance(tab_id, str) and tab_id:

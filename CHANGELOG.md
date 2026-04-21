@@ -1,8 +1,20 @@
 # agent-browser
 
-## 0.26.0-celeria-camoufox.1
+## 0.26.0-celeria-camoufox.2
 
 <!-- release:start -->
+### Bug Fixes
+
+- **Fixed `internal-error: name 'ref_id' is not defined` on every `page.snapshot` call under the Camoufox engine.** A prior change to the sidecar's handle-resolution loop renamed a loop-local variable but missed the `ref_cache.put` call at the end of the loop, which broke every snapshot-then-click flow in v0.26.0-celeria-camoufox.1. The fix also clarifies the two-ref distinction in the loop (agent-facing `@eN` vs. DOM `data-__ab-ref` attribute) so a future edit is less likely to break this again. Regression test added: `test_interactive_only_snapshot_then_click_by_ref` exercises the full snapshot → click-by-ref path and would have caught the original NameError. (Celeria fork)
+
+### New Features
+
+- **`scroll` and `scroll into view` on the Camoufox engine.** Previously returned `not-yet-implemented: action 'Runtime.evaluate' is not yet supported on engine=camoufox`. Parity with the Chrome path: `scroll` accepts `{x, y}` pixel deltas or `{direction: up|down|left|right, amount}` (Rust-side normalisation folds direction/amount into deltas before the sidecar call), with optional `selector` (a CSS selector or `@eN` ref) to scroll inside a specific element rather than the window. `scroll into view` centres the matched element via `scrollIntoView({block:'center', inline:'center'})`, matching the Chrome path's JS exactly. Both return structured errors (`selector-not-found`, `ambiguous-selector`, `ref-stale`, `element-detached`) rather than opaque Playwright exceptions. Still deferred to v2: ref-annotated screenshots (`screenshot --annotate`) which need CDP DOM-box extraction the sidecar doesn't yet expose. (Celeria fork)
+<!-- release:end -->
+
+## 0.26.0-celeria-camoufox.1
+
+<!-- old-release:start -->
 ### New Features
 
 - **`--engine camoufox` — third browser backend (Camoufox / patched Firefox).** Adds Camoufox alongside the existing Chrome (CDP) and Lightpanda (CDP) engines for targets that defeat JS-injection stealth. Camoufox's C++-level patches (canvas/WebGL noise, font fingerprint, WebRTC IP, AudioContext) go deeper than our `--stealth` script. Because Camoufox speaks Juggler, not CDP, the daemon drives it via a persistent Python sidecar over JSON-line stdio instead of the existing `CdpClient`. Stealth is implicit when `engine=camoufox`; combining with `--stealth` is a no-op with a warning (the JS injection would fight the engine-level spoofs). (Celeria fork)
@@ -15,7 +27,7 @@
 ### Requirements
 
 - Running `--engine camoufox` outside the Celeria E2B template requires a Python 3 runtime with `pip install camoufox camoufox_sidecar` and a one-time `python -m camoufox fetch` to download the Camoufox browser binary. Follows the Lightpanda "install it yourself" precedent; `agent-browser install` is not extended for Camoufox in v1.
-<!-- release:end -->
+<!-- old-release:end -->
 
 ## 0.26.0-celeria-stealth.1
 

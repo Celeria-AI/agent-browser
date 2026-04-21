@@ -2921,7 +2921,6 @@ async fn handle_hover(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
 
 async fn handle_scroll(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
-    let session_id = mgr.active_session_id()?.to_string();
     let selector = cmd.get("selector").and_then(|v| v.as_str());
 
     let (mut dx, mut dy) = (
@@ -2940,6 +2939,19 @@ async fn handle_scroll(cmd: &Value, state: &mut DaemonState) -> Result<Value, St
         }
     }
 
+    // Camoufox path: direction/amount are already folded into dx/dy above,
+    // so the sidecar only needs deltas plus an optional selector. Keeping the
+    // Rust side responsible for the translation means a single scroll
+    // semantic lives in `handle_scroll`, not duplicated across engines.
+    if mgr.backend.is_camoufox() {
+        let mut args = json!({ "x": dx, "y": dy });
+        if let Some(sel) = selector {
+            args["selector"] = json!(sel);
+        }
+        return mgr.camoufox_client().call("page.scroll", args).await;
+    }
+
+    let session_id = mgr.active_session_id()?.to_string();
     interaction::scroll(
         &mgr.backend,
         &session_id,
@@ -4420,12 +4432,19 @@ async fn handle_selectall(cmd: &Value, state: &mut DaemonState) -> Result<Value,
 
 async fn handle_scrollintoview(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
-    let session_id = mgr.active_session_id()?.to_string();
     let selector = cmd
         .get("selector")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'selector' parameter")?;
 
+    if mgr.backend.is_camoufox() {
+        return mgr
+            .camoufox_client()
+            .call("page.scrollIntoView", json!({ "selector": selector }))
+            .await;
+    }
+
+    let session_id = mgr.active_session_id()?.to_string();
     interaction::scroll_into_view(
         &mgr.backend,
         &session_id,
