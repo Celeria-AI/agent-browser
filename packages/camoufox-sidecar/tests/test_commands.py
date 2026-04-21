@@ -262,3 +262,160 @@ def _ref_by(refs: dict, *, role: str, name: str) -> str | None:
         if entry["role"] == role and entry["name"].strip() == name:
             return ref_id
     return None
+
+
+# ---------------------------------------------------------------------------
+# Regression tests
+# ---------------------------------------------------------------------------
+
+
+async def test_interactive_only_snapshot_then_click_by_ref(
+    camoufox_sidecar: Sidecar,
+) -> None:
+    """Regression: ``snapshot -i`` renumbers refs to ``e1..eM`` on the agent
+    side while the JS walker's ``data-__ab-ref`` attributes still hold the
+    pre-filter counter. The handle-resolution loop must query the DOM by the
+    original attribute and cache handles under the renumbered ref, so a
+    subsequent ``click @eN`` actually hits the right element.
+
+    A prior fix introduced a ``NameError: name 'ref_id' is not defined`` in
+    this loop which broke every ``snapshot`` call. This test locks in that
+    (a) interactive_only snapshot doesn't raise, and (b) the renumbered ref
+    actually clicks the underlying element.
+    """
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, FIXTURE_URL)
+
+    # Interactive-only snapshot should not raise and should renumber refs.
+    result = await _snapshot(sc, 3, interactive=True)
+    refs = result["refs"]
+    # Fixture has no heading filtered out (h1 is a heading role, non-interactive),
+    # so e1..e5 should all be interactive roles.
+    assert all(k.startswith("e") for k in refs.keys())
+    assert not any(r["role"] == "heading" for r in refs.values()), refs
+
+    # The submit button's renumbered ref should still click the real element.
+    submit_ref = _ref_by(refs, role="button", name="Submit")
+    assert submit_ref, refs
+    await sc.send(
+        {"id": 20, "cmd": "page.click", "args": {"selector": f"@{submit_ref}"}}
+    )
+    click_resp = await sc.read_frame(timeout=30.0)
+    assert click_resp["ok"] is True, click_resp
+
+    await sc.send(
+        {"id": 21, "cmd": "page.getText", "args": {"selector": "#status"}}
+    )
+    text_resp = await sc.read_frame(timeout=10.0)
+    assert text_resp["result"]["text"] == "Submitted"
+
+
+# ---------------------------------------------------------------------------
+# Scroll — Unit 5 extension for Chrome-parity
+# ---------------------------------------------------------------------------
+
+
+SCROLL_PAGE_URL = (
+    "data:text/html,"
+    "<html><body style='margin:0;padding:0;'>"
+    "<div id='top' style='height:40px;background:#f88;'>top</div>"
+    "<div style='height:3000px;background:#eee;'></div>"
+    "<div id='bot' style='height:40px;background:#8f8;'>bottom</div>"
+    "</body></html>"
+)
+
+
+async def test_scroll_window_by_y_succeeds(camoufox_sidecar: Sidecar) -> None:
+    """page.scroll without a selector scrolls the window by (x, y)."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, SCROLL_PAGE_URL)
+
+    await sc.send(
+        {"id": 10, "cmd": "page.scroll", "args": {"y": 1500}}
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is True, resp
+    assert resp["result"]["scrolled"] is True
+
+
+async def test_scroll_window_negative_y_scrolls_up(camoufox_sidecar: Sidecar) -> None:
+    """Negative y scrolls up (after scrolling down first so there's room)."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, SCROLL_PAGE_URL)
+
+    # Scroll down 2000, then scroll up 1000 — both should succeed.
+    await sc.send({"id": 10, "cmd": "page.scroll", "args": {"y": 2000}})
+    down_resp = await sc.read_frame(timeout=10.0)
+    assert down_resp["ok"] is True, down_resp
+
+    await sc.send({"id": 11, "cmd": "page.scroll", "args": {"y": -1000}})
+    up_resp = await sc.read_frame(timeout=10.0)
+    assert up_resp["ok"] is True, up_resp
+
+
+async def test_scroll_by_css_selector_with_missing_element(
+    camoufox_sidecar: Sidecar,
+) -> None:
+    """Selector that doesn't match surfaces ``selector-not-found``."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, SCROLL_PAGE_URL)
+
+    await sc.send(
+        {
+            "id": 10,
+            "cmd": "page.scroll",
+            "args": {"selector": "#does-not-exist-42", "y": 100},
+        }
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is False, resp
+    assert resp["error"]["code"] == "selector-not-found", resp
+
+
+async def test_scroll_into_view_by_css_selector(camoufox_sidecar: Sidecar) -> None:
+    """page.scrollIntoView centres the matched element in the viewport."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, SCROLL_PAGE_URL)
+
+    await sc.send(
+        {"id": 10, "cmd": "page.scrollIntoView", "args": {"selector": "#bot"}}
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is True, resp
+    assert resp["result"]["scrolled"] == "#bot"
+
+
+async def test_scroll_into_view_by_ref(camoufox_sidecar: Sidecar) -> None:
+    """page.scrollIntoView accepts a ``@eN`` ref after a snapshot."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, FIXTURE_URL)
+    snap = await _snapshot(sc, 3)
+    submit_ref = _ref_by(snap["refs"], role="button", name="Submit")
+    assert submit_ref, snap
+
+    await sc.send(
+        {
+            "id": 10,
+            "cmd": "page.scrollIntoView",
+            "args": {"selector": f"@{submit_ref}"},
+        }
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is True, resp
+    assert resp["result"]["scrolled"] == f"@{submit_ref}"
+
+
+async def test_scroll_into_view_ambiguous_selector_errors(
+    camoufox_sidecar: Sidecar,
+) -> None:
+    """Selector matching multiple elements surfaces ``ambiguous-selector``."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, FIXTURE_URL)
+
+    # ``input`` matches three elements on the fixture.
+    await sc.send(
+        {"id": 10, "cmd": "page.scrollIntoView", "args": {"selector": "input"}}
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is False, resp
+    assert resp["error"]["code"] == "ambiguous-selector", resp

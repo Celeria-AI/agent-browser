@@ -300,9 +300,16 @@ async def take_snapshot(
             entry["ref"] = f"e{new_idx}"
 
     # Resolve each ref back to a live ElementHandle so subsequent click/fill
-    # calls can reach the element without re-running the JS walker.
+    # calls can reach the element without re-running the JS walker. Two refs
+    # are in play here: ``entry["ref"]`` is the agent-facing id (``e1..eM``,
+    # contiguous after any ``interactive_only`` filter), and ``dom_ref`` is
+    # the attribute value the JS walker stamped on the element before the
+    # filter re-numbered refs. We query by the DOM ref and cache under the
+    # agent-facing one, so the next ``click @eN`` from the agent lands on
+    # the right handle.
     for entry in entries:
-        dom_ref = entry.get("_dom_ref", entry["ref"])
+        agent_ref = entry["ref"]
+        dom_ref = entry.get("_dom_ref", agent_ref)
         handle = await page.query_selector(f"[data-__ab-ref='{dom_ref}']")
         if handle is None:
             # Element vanished between the walker and this query_selector —
@@ -310,7 +317,7 @@ async def take_snapshot(
             # synchronously. Drop the entry silently rather than emit a
             # dangling ref to the agent.
             continue
-        ref_cache.put(ref_id, handle, role=entry["role"], name=entry["name"])
+        ref_cache.put(agent_ref, handle, role=entry["role"], name=entry["name"])
 
     lines = [_format_line(entry) for entry in entries]
     if not lines:

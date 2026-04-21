@@ -147,6 +147,14 @@ async def _cmd_page_screenshot(sidecar: "Sidecar", args: dict) -> dict:
     return await sidecar.session.screenshot(args)
 
 
+async def _cmd_page_scroll(sidecar: "Sidecar", args: dict) -> dict:
+    return await sidecar.session.scroll(args)
+
+
+async def _cmd_page_scroll_into_view(sidecar: "Sidecar", args: dict) -> dict:
+    return await sidecar.session.scroll_into_view(args)
+
+
 async def _cmd_tab_new(sidecar: "Sidecar", args: dict) -> dict:
     return await sidecar.session.tab_new(args)
 
@@ -172,6 +180,8 @@ _HANDLERS: dict[str, Handler] = {
     "page.fill": _cmd_page_fill,
     "page.getText": _cmd_page_get_text,
     "page.screenshot": _cmd_page_screenshot,
+    "page.scroll": _cmd_page_scroll,
+    "page.scrollIntoView": _cmd_page_scroll_into_view,
     "tab.new": _cmd_tab_new,
     "tab.switch": _cmd_tab_switch,
     "tab.close": _cmd_tab_close,
