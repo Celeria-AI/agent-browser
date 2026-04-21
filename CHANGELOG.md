@@ -1,12 +1,29 @@
 # agent-browser
 
-## 0.26.0-celeria-stealth.1
+## 0.26.0-celeria-camoufox.1
 
 <!-- release:start -->
 ### New Features
 
-- **`--stealth` flag and `AGENT_BROWSER_STEALTH` env var** - Opt-in stealth mode that masks the most common bot-detection signals: hides `navigator.webdriver`, restores a fake `chrome.runtime`, spoofs `navigator.plugins`, fixes `navigator.languages`, patches the WebGL vendor/renderer tuple, and prepends `--disable-blink-features=AutomationControlled` to the Chromium launch args. The init script is injected per-page via `Page.addScriptToEvaluateOnNewDocument` from `enable_domains`, so it runs before any document JS on every navigation. Spirit of the closed upstream PR #471, ported to the current Rust codebase. (Celeria fork)
+- **`--engine camoufox` — third browser backend (Camoufox / patched Firefox).** Adds Camoufox alongside the existing Chrome (CDP) and Lightpanda (CDP) engines for targets that defeat JS-injection stealth. Camoufox's C++-level patches (canvas/WebGL noise, font fingerprint, WebRTC IP, AudioContext) go deeper than our `--stealth` script. Because Camoufox speaks Juggler, not CDP, the daemon drives it via a persistent Python sidecar over JSON-line stdio instead of the existing `CdpClient`. Stealth is implicit when `engine=camoufox`; combining with `--stealth` is a no-op with a warning (the JS injection would fight the engine-level spoofs). (Celeria fork)
+- **`BrowserBackend` engine dispatch in the action layer.** `BrowserManager` now holds an engine-tagged backend enum and every action under `cli/src/native/*.rs` (`actions`, `interaction`, `element`, `snapshot`, `screenshot`, `cookies`, `network`) has a per-engine arm. Chrome and Lightpanda paths are byte-for-byte unchanged; `inspect_server` and `stream/cdp_loop` remain Chrome-only and return a structured `engine-incompatible` error when pointed at a Camoufox backend.
+- **v1 command surface for Camoufox.** `open`, `navigate`, `snapshot` with `@eN` refs, `click`/`fill`/`get text` by ref and by selector, `screenshot`, `tabs` (list/new/switch/close), `close`. `@eN` refs are sidecar-owned element handles invalidated on navigation — stale access returns `{"code": "ref-stale"}` rather than silently acting on the wrong element. Low-value or engine-incompatible commands (`screencast`, raw `cdp`, devtools introspection) return `{"code": "not-yet-supported", "engine": "camoufox"}`.
+- **Sidecar distribution.** The `camoufox_sidecar` Python package is embedded into the Rust binary via `include_dir!` and extracted to `$CACHE_DIR/agent-browser/camoufox-sidecar-<version>/` on first launch. When `camoufox_sidecar` is installed into the system Python (e.g. the E2B sandbox), `python3 -m camoufox_sidecar` is used directly without extraction. Python runtime lookup order: `AGENT_BROWSER_CAMOUFOX_PYTHON` env var → `python3` on PATH.
+- **`doctor` reports Camoufox status.** `agent-browser doctor` probes python3, `import camoufox`, and `python3 -m camoufox path` (browser binary presence), reporting each separately with actionable reasons when a step is missing. Non-fatal — a missing Camoufox doesn't block Chrome/Lightpanda use.
+- **`"engine"` label in `--json` output.** Every response carries `"engine": "<chrome|lightpanda|camoufox>"` so downstream consumers can segment telemetry by backend without inspecting request state.
+
+### Requirements
+
+- Running `--engine camoufox` outside the Celeria E2B template requires a Python 3 runtime with `pip install camoufox camoufox_sidecar` and a one-time `python -m camoufox fetch` to download the Camoufox browser binary. Follows the Lightpanda "install it yourself" precedent; `agent-browser install` is not extended for Camoufox in v1.
 <!-- release:end -->
+
+## 0.26.0-celeria-stealth.1
+
+<!-- old-release:start -->
+### New Features
+
+- **`--stealth` flag and `AGENT_BROWSER_STEALTH` env var** - Opt-in stealth mode that masks the most common bot-detection signals: hides `navigator.webdriver`, restores a fake `chrome.runtime`, spoofs `navigator.plugins`, fixes `navigator.languages`, patches the WebGL vendor/renderer tuple, and prepends `--disable-blink-features=AutomationControlled` to the Chromium launch args. The init script is injected per-page via `Page.addScriptToEvaluateOnNewDocument` from `enable_domains`, so it runs before any document JS on every navigation. Spirit of the closed upstream PR #471, ported to the current Rust codebase. (Celeria fork)
+<!-- old-release:end -->
 
 ## 0.26.0
 
