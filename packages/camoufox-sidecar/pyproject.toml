@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "camoufox-sidecar"
-version = "0.26.0+celeria.camoufox.2"
+version = "0.26.0+celeria.camoufox.3"
 description = "Sidecar process that drives Camoufox on behalf of agent-browser"
 readme = "README.md"
 requires-python = ">=3.10"

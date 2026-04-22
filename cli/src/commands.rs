@@ -156,18 +156,99 @@ fn parse_command_inner(args: &[String], flags: &Flags) -> Result<Value, ParseErr
 
         // === Core Actions ===
         "click" => {
+            const CLICK_USAGE: &str = "click <selector> [--new-tab] | click --at X,Y";
             let new_tab = rest.contains(&"--new-tab");
-            let sel = rest
-                .iter()
-                .find(|arg| **arg != "--new-tab")
-                .ok_or_else(|| ParseError::MissingArguments {
+
+            // Extract --at <value>. Both forms are accepted: `--at X,Y` and
+            // `--at X Y`; the second is friendlier for humans who forget the
+            // comma, and unambiguous because numbers never appear as bare
+            // positional args to `click`.
+            let mut at_coords: Option<(f64, f64)> = None;
+            let mut selector: Option<&str> = None;
+            let mut idx = 0;
+            while idx < rest.len() {
+                let arg = rest[idx];
+                if arg == "--new-tab" {
+                    idx += 1;
+                    continue;
+                }
+                if arg == "--at" {
+                    let first = rest
+                        .get(idx + 1)
+                        .ok_or_else(|| ParseError::MissingArguments {
+                            context: "click --at".to_string(),
+                            usage: CLICK_USAGE,
+                        })?;
+                    if let Some((x_str, y_str)) = first.split_once(',') {
+                        let x =
+                            x_str
+                                .trim()
+                                .parse::<f64>()
+                                .map_err(|_| ParseError::InvalidValue {
+                                    message: format!("--at: invalid x coordinate {:?}", x_str),
+                                    usage: CLICK_USAGE,
+                                })?;
+                        let y =
+                            y_str
+                                .trim()
+                                .parse::<f64>()
+                                .map_err(|_| ParseError::InvalidValue {
+                                    message: format!("--at: invalid y coordinate {:?}", y_str),
+                                    usage: CLICK_USAGE,
+                                })?;
+                        at_coords = Some((x, y));
+                        idx += 2;
+                    } else {
+                        let x = first.parse::<f64>().map_err(|_| ParseError::InvalidValue {
+                            message: format!("--at: invalid x coordinate {:?}", first),
+                            usage: CLICK_USAGE,
+                        })?;
+                        let y_str =
+                            rest.get(idx + 2)
+                                .ok_or_else(|| ParseError::MissingArguments {
+                                    context: "click --at X Y".to_string(),
+                                    usage: CLICK_USAGE,
+                                })?;
+                        let y = y_str.parse::<f64>().map_err(|_| ParseError::InvalidValue {
+                            message: format!("--at: invalid y coordinate {:?}", y_str),
+                            usage: CLICK_USAGE,
+                        })?;
+                        at_coords = Some((x, y));
+                        idx += 3;
+                    }
+                    continue;
+                }
+                if selector.is_none() {
+                    selector = Some(arg);
+                }
+                idx += 1;
+            }
+
+            match (selector, at_coords) {
+                (Some(_), Some(_)) => Err(ParseError::InvalidValue {
+                    message: "click takes either a selector or --at, not both".to_string(),
+                    usage: CLICK_USAGE,
+                }),
+                (None, None) => Err(ParseError::MissingArguments {
                     context: "click".to_string(),
-                    usage: "click <selector> [--new-tab]",
-                })?;
-            if new_tab {
-                Ok(json!({ "id": id, "action": "click", "selector": sel, "newTab": true }))
-            } else {
-                Ok(json!({ "id": id, "action": "click", "selector": sel }))
+                    usage: CLICK_USAGE,
+                }),
+                (None, Some((x, y))) => {
+                    if new_tab {
+                        return Err(ParseError::InvalidValue {
+                            message: "--new-tab is not supported with --at".to_string(),
+                            usage: CLICK_USAGE,
+                        });
+                    }
+                    Ok(json!({ "id": id, "action": "click", "at": [x, y] }))
+                }
+                (Some(sel), None) => {
+                    if new_tab {
+                        Ok(json!({ "id": id, "action": "click", "selector": sel, "newTab": true }))
+                    } else {
+                        Ok(json!({ "id": id, "action": "click", "selector": sel }))
+                    }
+                }
             }
         }
         "dblclick" => {
@@ -2806,6 +2887,68 @@ mod tests {
         let cmd = parse_command(&args("click #button"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "click");
         assert_eq!(cmd["selector"], "#button");
+    }
+
+    #[test]
+    fn test_click_at_comma() {
+        let cmd = parse_command(&args("click --at 320,540"), &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "click");
+        assert!(cmd.get("selector").is_none());
+        assert_eq!(cmd["at"][0], 320.0);
+        assert_eq!(cmd["at"][1], 540.0);
+    }
+
+    #[test]
+    fn test_click_at_space_separated() {
+        let cmd = parse_command(&args("click --at 320 540"), &default_flags()).unwrap();
+        assert_eq!(cmd["at"][0], 320.0);
+        assert_eq!(cmd["at"][1], 540.0);
+    }
+
+    #[test]
+    fn test_click_at_floats() {
+        let cmd = parse_command(&args("click --at 10.5,20.25"), &default_flags()).unwrap();
+        assert_eq!(cmd["at"][0], 10.5);
+        assert_eq!(cmd["at"][1], 20.25);
+    }
+
+    #[test]
+    fn test_click_selector_and_at_is_error() {
+        let err = parse_command(&args("click #btn --at 1,2"), &default_flags()).unwrap_err();
+        assert!(matches!(err, ParseError::InvalidValue { .. }), "{:?}", err);
+    }
+
+    #[test]
+    fn test_click_neither_selector_nor_at_is_error() {
+        let err = parse_command(&args("click"), &default_flags()).unwrap_err();
+        assert!(
+            matches!(err, ParseError::MissingArguments { .. }),
+            "{:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_click_at_new_tab_is_error() {
+        let err = parse_command(&args("click --at 1,2 --new-tab"), &default_flags()).unwrap_err();
+        assert!(matches!(err, ParseError::InvalidValue { .. }), "{:?}", err);
+    }
+
+    #[test]
+    fn test_click_at_invalid_coord() {
+        let err = parse_command(&args("click --at abc,def"), &default_flags()).unwrap_err();
+        assert!(matches!(err, ParseError::InvalidValue { .. }), "{:?}", err);
+    }
+
+    #[test]
+    fn test_click_at_missing_second_coord() {
+        // With space-separated form, missing the second value must error.
+        let err = parse_command(&args("click --at 320"), &default_flags()).unwrap_err();
+        assert!(
+            matches!(err, ParseError::MissingArguments { .. }),
+            "{:?}",
+            err
+        );
     }
 
     #[test]

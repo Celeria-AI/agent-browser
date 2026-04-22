@@ -1140,13 +1140,23 @@ Examples:
 agent-browser click - Click an element
 
 Usage: agent-browser click <selector> [--new-tab]
+       agent-browser click --at X,Y
 
 Clicks on the specified element. The selector can be a CSS selector,
 XPath, or an element reference from snapshot (e.g., @e1).
 
+Use --at to click at a raw viewport coordinate when no selector or ref
+can reach the target -- for example, a checkbox inside a cross-origin
+Cloudflare Turnstile iframe visible in a screenshot.
+
 Options:
   --new-tab            Open link in a new tab instead of navigating current tab
-                       (only works on elements with href attribute)
+                       (only works on elements with href attribute; not
+                        compatible with --at)
+  --at X,Y             Click at viewport coordinates X,Y. Coordinates are
+                       relative to the current viewport, NOT the full page.
+                       If you took a full-page screenshot while scrolled,
+                       subtract the scroll offset before passing coords.
 
 Global Options:
   --json               Output as JSON
@@ -1158,6 +1168,8 @@ Examples:
   agent-browser click "button.primary"
   agent-browser click "//button[@type='submit']"
   agent-browser click @e3 --new-tab
+  agent-browser click --at 320,540
+  agent-browser click --at 320 540
 "##
         }
         "dblclick" => {

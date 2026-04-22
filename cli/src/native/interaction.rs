@@ -26,6 +26,24 @@ pub async fn click(
     dispatch_click(client, &effective_session_id, x, y, button, click_count).await
 }
 
+/// Click at a raw viewport coordinate, bypassing selector/ref resolution.
+///
+/// Use when the agent has a pixel location from a screenshot but cannot
+/// resolve a ref — the snapshot walker doesn't descend into cross-origin
+/// iframes, so Cloudflare Turnstile checkboxes and similar are unreachable
+/// via ref. The coordinate is viewport-relative; callers using full-page
+/// screenshots must account for scroll position themselves.
+pub async fn click_at(
+    client: &BrowserBackend,
+    session_id: &str,
+    x: f64,
+    y: f64,
+    button: &str,
+    click_count: i32,
+) -> Result<(), String> {
+    dispatch_click(client, session_id, x, y, button, click_count).await
+}
+
 pub async fn dblclick(
     client: &BrowserBackend,
     session_id: &str,

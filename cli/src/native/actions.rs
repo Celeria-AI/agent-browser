@@ -2662,20 +2662,53 @@ async fn handle_screenshot(cmd: &Value, state: &mut DaemonState) -> Result<Value
     Ok(response)
 }
 
+fn parse_at(raw: Option<&Value>) -> Result<Option<(f64, f64)>, String> {
+    let Some(value) = raw else {
+        return Ok(None);
+    };
+    let arr = value
+        .as_array()
+        .ok_or_else(|| "click: 'at' must be a [x, y] array".to_string())?;
+    if arr.len() != 2 {
+        return Err("click: 'at' must have exactly two elements".to_string());
+    }
+    let x = arr[0]
+        .as_f64()
+        .ok_or_else(|| "click: 'at.x' must be a number".to_string())?;
+    let y = arr[1]
+        .as_f64()
+        .ok_or_else(|| "click: 'at.y' must be a number".to_string())?;
+    Ok(Some((x, y)))
+}
+
 async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
-    let selector = cmd
-        .get("selector")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing 'selector' parameter")?;
+    let at = parse_at(cmd.get("at"))?;
+    let selector = cmd.get("selector").and_then(|v| v.as_str());
+
+    match (selector, at) {
+        (Some(_), Some(_)) => {
+            return Err("click: pass either 'selector' or 'at', not both".to_string());
+        }
+        (None, None) => {
+            return Err("click: missing 'selector' or 'at' parameter".to_string());
+        }
+        _ => {}
+    }
 
     if let Some(ref wb) = state.webdriver_backend {
         if state.browser.is_none() {
-            wb.click(selector).await?;
-            return Ok(json!({ "clicked": selector }));
+            if at.is_some() {
+                return Err("click --at is not supported on the WebDriver backend".to_string());
+            }
+            let sel = selector.expect("selector checked above");
+            wb.click(sel).await?;
+            return Ok(json!({ "clicked": sel }));
         }
     }
 
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
+    let button = cmd.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+    let click_count = cmd.get("clickCount").and_then(|v| v.as_i64()).unwrap_or(1);
 
     // Camoufox path: forward the click to the sidecar. Ref resolution, strict
     // selector-count checks, and error code normalisation happen there so
@@ -2688,17 +2721,30 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
                     .to_string(),
             );
         }
-        let args = json!({
-            "selector": selector,
-            "button": cmd.get("button").and_then(|v| v.as_str()).unwrap_or("left"),
-            "clickCount": cmd.get("clickCount").and_then(|v| v.as_i64()).unwrap_or(1),
-        });
+        let mut args = json!({ "button": button, "clickCount": click_count });
+        if let Some((x, y)) = at {
+            args["at"] = json!([x, y]);
+        } else {
+            args["selector"] = json!(selector.expect("selector checked above"));
+        }
         return mgr.camoufox_client().call("page.click", args).await;
     }
 
     let session_id = mgr.active_session_id()?.to_string();
 
     let new_tab = cmd.get("newTab").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    // Coordinate click on the Chrome path: dispatch raw CDP mouse events at
+    // (x, y) without resolving a selector. Viewport-relative; see --help.
+    if let Some((x, y)) = at {
+        if new_tab {
+            return Err("--new-tab is not supported with --at".to_string());
+        }
+        interaction::click_at(&mgr.backend, &session_id, x, y, button, click_count as i32).await?;
+        return Ok(json!({ "clicked": { "x": x, "y": y } }));
+    }
+
+    let selector = selector.expect("selector checked above");
 
     if new_tab {
         use super::element::resolve_element_object_id;
@@ -2742,16 +2788,13 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
         return Ok(json!({ "clicked": selector, "newTab": true, "url": href }));
     }
 
-    let button = cmd.get("button").and_then(|v| v.as_str()).unwrap_or("left");
-    let click_count = cmd.get("clickCount").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-
     interaction::click(
         &mgr.backend,
         &session_id,
         &state.ref_map,
         selector,
         button,
-        click_count,
+        click_count as i32,
         &state.iframe_sessions,
     )
     .await?;
