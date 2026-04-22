@@ -1,8 +1,21 @@
 # agent-browser
 
-## 0.26.0-celeria-camoufox.2
+## 0.26.0-celeria-camoufox.3
 
 <!-- release:start -->
+### New Features
+
+- **Camoufox sidecar defaults `humanize=True` and `block_webrtc=True` at launch when the caller doesn't pass them.** `humanize` replaces Camoufox's teleport-clicks with curved, variable-speed mouse paths that pass the behavioural checks WAFs like Cloudflare Turnstile run on pointer events; `block_webrtc` suppresses STUN / host / foundation candidates that would otherwise leak the real client IP past an HTTP proxy. Both were already on the sidecar's launch allowlist but relied on Camoufox's upstream defaults, which are off. An explicit `humanize: false` (e.g. deterministic tests) is preserved. Validated against `abrahamjuliot.github.io/creepjs/` — WebRTC rows all report *blocked*, headless detection reads 0% across the board. (Celeria fork)
+- **`click --at X,Y` for viewport-coordinate clicks.** When a target is inside a cross-origin iframe (Cloudflare Turnstile checkbox, embedded payment widgets, reCAPTCHA cells) our snapshot walker can't descend into the frame and no `@eN` ref is available. Agents previously had nothing to click with, even when a screenshot showed the pixel location clearly. `--at X,Y` (comma-separated) or `--at X Y` (space-separated) accepts a viewport coordinate pair and dispatches a real mouse click at that pixel: on Camoufox via `page.mouse.click(x, y)` (humanize path), on the Chrome engine via CDP `Input.dispatchMouseEvent`. Mutually exclusive with `selector` — passing both or neither errors. Sidecar response shape is `{"clicked": {"x": X, "y": Y}, "tabId": …}` so callers can distinguish coordinate-path clicks from selector-path ones. Validated end-to-end against the 2captcha Turnstile demo page: a click on the widget checkbox coord resolves to "Success". (Celeria fork)
+
+### Notes
+
+- `--at` coordinates are **viewport-relative**, not page-relative. If you took a full-page screenshot while scrolled, subtract the scroll offset before passing coords — the CLI does not transparently reconcile this. Documented in `click --help`.
+<!-- release:end -->
+
+## 0.26.0-celeria-camoufox.2
+
+<!-- old-release:start -->
 ### Bug Fixes
 
 - **Fixed `internal-error: name 'ref_id' is not defined` on every `page.snapshot` call under the Camoufox engine.** A prior change to the sidecar's handle-resolution loop renamed a loop-local variable but missed the `ref_cache.put` call at the end of the loop, which broke every snapshot-then-click flow in v0.26.0-celeria-camoufox.1. The fix also clarifies the two-ref distinction in the loop (agent-facing `@eN` vs. DOM `data-__ab-ref` attribute) so a future edit is less likely to break this again. Regression test added: `test_interactive_only_snapshot_then_click_by_ref` exercises the full snapshot → click-by-ref path and would have caught the original NameError. (Celeria fork)
@@ -10,7 +23,7 @@
 ### New Features
 
 - **`scroll` and `scroll into view` on the Camoufox engine.** Previously returned `not-yet-implemented: action 'Runtime.evaluate' is not yet supported on engine=camoufox`. Parity with the Chrome path: `scroll` accepts `{x, y}` pixel deltas or `{direction: up|down|left|right, amount}` (Rust-side normalisation folds direction/amount into deltas before the sidecar call), with optional `selector` (a CSS selector or `@eN` ref) to scroll inside a specific element rather than the window. `scroll into view` centres the matched element via `scrollIntoView({block:'center', inline:'center'})`, matching the Chrome path's JS exactly. Both return structured errors (`selector-not-found`, `ambiguous-selector`, `ref-stale`, `element-detached`) rather than opaque Playwright exceptions. Still deferred to v2: ref-annotated screenshots (`screenshot --annotate`) which need CDP DOM-box extraction the sidecar doesn't yet expose. (Celeria fork)
-<!-- release:end -->
+<!-- old-release:end -->
 
 ## 0.26.0-celeria-camoufox.1
 

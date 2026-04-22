@@ -80,27 +80,38 @@ cargo build --release --manifest-path ~/git/agent-browser/cli/Cargo.toml
 Cold build: 1–3 minutes. Incrementals: seconds. The output binary lands at
 `~/git/agent-browser/cli/target/release/agent-browser`.
 
-### 5. Shell shortcuts (optional but strongly recommended)
+### 5. Put `abdev` on PATH
 
-Add to your shell rc:
+A thin wrapper script lives at `packages/camoufox-sidecar/bin/abdev`. It
+sets `AGENT_BROWSER_CAMOUFOX_PYTHON`, points at the release binary, and
+auto-injects `--engine camoufox` on launch verbs (`open`/`goto`/`navigate`)
+so you don't have to remember it.
+
+Pick one:
 
 ```bash
-# Point agent-browser at the venv's Python so it finds camoufox_sidecar.
-# Without this, agent-browser falls back to `python3` on PATH, which is
-# Homebrew's and doesn't have the sidecar installed.
-export AGENT_BROWSER_CAMOUFOX_PYTHON=~/.camoufox-dev/venv/bin/python
+# Option A: symlink into a directory already on your PATH
+ln -s ~/git/agent-browser/packages/camoufox-sidecar/bin/abdev ~/.local/bin/abdev
 
-# Alias the dev binary so you don't collide with a system `agent-browser`.
-alias abdev=~/git/agent-browser/cli/target/release/agent-browser
+# Option B: add the script's directory to PATH in your shell rc
+export PATH="$HOME/git/agent-browser/packages/camoufox-sidecar/bin:$PATH"
 ```
 
-Reload your shell. Sanity check:
+Override points (all optional):
+
+```bash
+export AB_DEV_VENV=/custom/venv/path       # default: ~/.camoufox-dev/venv
+export AB_DEV_BINARY=/custom/path/to/bin   # default: <repo>/cli/target/release/agent-browser
+AB_DEV_REBUILD=1 abdev …                   # force cargo build --release first
+```
+
+Sanity check:
 
 ```bash
 abdev --version
 # agent-browser 0.26.0-celeria-camoufox.2  (or whatever your branch is on)
 
-abdev --engine camoufox open https://example.com
+abdev open https://example.com   # --engine camoufox auto-injected
 # ⚠ Daemon version mismatch detected, restarting...
 # ✓ Example Domain
 #   https://example.com/
@@ -146,7 +157,7 @@ Next `abdev --engine camoufox …` picks up the new code.
 
 ```bash
 # edit session.py
-abdev --engine camoufox open https://bot.sannysoft.com
+abdev open https://bot.sannysoft.com
 abdev screenshot /tmp/x.png && open /tmp/x.png
 abdev close
 ```
@@ -156,8 +167,10 @@ Loop time: ~3 sec plus page load.
 ### Rust change (e.g. new action handler in `actions.rs`)
 
 ```bash
+AB_DEV_REBUILD=1 abdev <new command>
+# or, equivalently:
 cargo build --release --manifest-path ~/git/agent-browser/cli/Cargo.toml
-abdev --engine camoufox <new command>
+abdev <new command>
 ```
 
 Loop time: ~10–30 sec for an incremental build, longer if you touched
@@ -185,7 +198,7 @@ This is the big value-add of local testing. The E2B sandbox IP is on
 elevated-risk lists with most WAF vendors; your home IP usually isn't.
 
 ```bash
-abdev --engine camoufox open https://<target-site>
+abdev open https://<target-site>
 sleep 10                 # give Cloudflare / similar a chance to auto-pass
 abdev screenshot /tmp/before.png && open /tmp/before.png
 ```

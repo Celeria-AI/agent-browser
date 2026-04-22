@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#
+# Local dev-loop wrapper for the Camoufox sidecar.
+#
+# Replaces the "set AGENT_BROWSER_CAMOUFOX_PYTHON + alias abdev=…/target/release"
+# shell-rc setup in DEV-LOOP.md with a single executable on PATH.
+#
+# Override points (all optional):
+#   AB_DEV_VENV      venv root (default: ~/.camoufox-dev/venv)
+#   AB_DEV_BINARY    agent-browser binary (default: <repo>/cli/target/release/agent-browser)
+#   AB_DEV_REBUILD=1 force `cargo build --release` before invoking
+
+set -euo pipefail
+
+# Resolve this script's real directory even through symlinks.
+source="${BASH_SOURCE[0]}"
+while [ -L "$source" ]; do
+  dir="$(cd -P "$(dirname "$source")" && pwd)"
+  source="$(readlink "$source")"
+  [[ $source != /* ]] && source="$dir/$source"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$source")" && pwd)"
+# packages/camoufox-sidecar/bin → repo root is three levels up
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+VENV="${AB_DEV_VENV:-$HOME/.camoufox-dev/venv}"
+BINARY="${AB_DEV_BINARY:-$REPO_ROOT/cli/target/release/agent-browser}"
+
+if [ ! -x "$VENV/bin/python" ]; then
+  echo "abdev: venv missing at $VENV/bin/python" >&2
+  echo "       see packages/camoufox-sidecar/DEV-LOOP.md §1-3 for setup" >&2
+  exit 1
+fi
+
+if [ "${AB_DEV_REBUILD:-0}" = "1" ] || [ ! -x "$BINARY" ]; then
+  echo "abdev: building agent-browser (release)…" >&2
+  cargo build --release --manifest-path "$REPO_ROOT/cli/Cargo.toml" >&2
+fi
+
+export AGENT_BROWSER_CAMOUFOX_PYTHON="$VENV/bin/python"
+
+# Auto-inject --engine camoufox on the first agent-browser invocation that
+# implies a launch (open/goto/navigate). Subsequent commands route to the
+# daemon that launch spawned, so they don't need it. Detecting the launch
+# verb is good enough here; users can always pass --engine explicitly.
+has_engine=0
+launch_verb=0
+for arg in "$@"; do
+  case "$arg" in
+    --engine) has_engine=1 ;;
+    open|goto|navigate) launch_verb=1 ;;
+  esac
+done
+
+if [ $launch_verb -eq 1 ] && [ $has_engine -eq 0 ]; then
+  exec "$BINARY" --engine camoufox "$@"
+else
+  exec "$BINARY" "$@"
+fi

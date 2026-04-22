@@ -120,6 +120,75 @@ async def test_missing_camoufox_binary_reports_actionable_error(
     assert "camoufox" in msg
 
 
+async def test_launch_defaults_humanize_and_block_webrtc_to_true() -> None:
+    """humanize / block_webrtc default True when caller omits them.
+
+    Asserted against the kwargs that reach ``AsyncCamoufox``, not Camoufox's
+    own behaviour, so this is fast and runs without the Camoufox binary.
+    """
+    import importlib
+
+    session_mod = importlib.import_module("camoufox_sidecar.session")
+    async_api = importlib.import_module("camoufox.async_api")
+
+    recorded: dict = {}
+
+    class _FakeBrowser:
+        async def __aenter__(self_inner):  # noqa: ARG002
+            return object()
+
+        async def __aexit__(self_inner, *exc):  # noqa: ARG002
+            return False
+
+    def _fake_ctor(**kwargs):
+        recorded.update(kwargs)
+        return _FakeBrowser()
+
+    original = async_api.AsyncCamoufox
+    async_api.AsyncCamoufox = _fake_ctor
+    try:
+        session = session_mod.Session()
+        await session.launch({"headless": True})
+    finally:
+        async_api.AsyncCamoufox = original
+
+    assert recorded.get("humanize") is True, recorded
+    assert recorded.get("block_webrtc") is True, recorded
+    assert recorded.get("headless") is True, recorded
+
+
+async def test_launch_preserves_explicit_humanize_false() -> None:
+    """Explicit ``humanize: False`` must not be overridden by the default."""
+    import importlib
+
+    session_mod = importlib.import_module("camoufox_sidecar.session")
+    async_api = importlib.import_module("camoufox.async_api")
+
+    recorded: dict = {}
+
+    class _FakeBrowser:
+        async def __aenter__(self_inner):  # noqa: ARG002
+            return object()
+
+        async def __aexit__(self_inner, *exc):  # noqa: ARG002
+            return False
+
+    def _fake_ctor(**kwargs):
+        recorded.update(kwargs)
+        return _FakeBrowser()
+
+    original = async_api.AsyncCamoufox
+    async_api.AsyncCamoufox = _fake_ctor
+    try:
+        session = session_mod.Session()
+        await session.launch({"humanize": False, "block_webrtc": False})
+    finally:
+        async_api.AsyncCamoufox = original
+
+    assert recorded.get("humanize") is False, recorded
+    assert recorded.get("block_webrtc") is False, recorded
+
+
 async def test_sigterm_cleans_up_firefox_child(requires_camoufox: None) -> None:
     """#5: SIGTERM tears down the sidecar and its Firefox grandchild in <5s."""
     if psutil is None:

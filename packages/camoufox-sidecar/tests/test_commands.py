@@ -201,6 +201,70 @@ async def test_ambiguous_selector_returns_structured_error(
     assert resp["error"]["code"] == "ambiguous-selector", resp
 
 
+async def test_click_at_fires_dom_sentinel(camoufox_sidecar: Sidecar) -> None:
+    """Click-at drives a DOM mutation the sidecar can observe via getText."""
+    sc = camoufox_sidecar
+    fixture = (
+        "data:text/html;charset=utf-8,"
+        "<html><body style='margin:0;padding:0;'>"
+        "<p id='status'>idle</p>"
+        "<button id='b' style='position:absolute;left:100px;top:200px;"
+        "width:80px;height:40px;' "
+        "onclick=\"document.getElementById('status').textContent='clicked'\">"
+        "hit</button>"
+        "</body></html>"
+    )
+    await _launch_and_goto(sc, fixture)
+
+    await sc.send(
+        {"id": 10, "cmd": "page.click", "args": {"at": [140, 220]}}
+    )
+    click_resp = await sc.read_frame(timeout=30.0)
+    assert click_resp["ok"] is True, click_resp
+    assert click_resp["result"]["clicked"] == {"x": 140.0, "y": 220.0}
+
+    await sc.send(
+        {"id": 11, "cmd": "page.getText", "args": {"selector": "#status"}}
+    )
+    text_resp = await sc.read_frame(timeout=10.0)
+    assert text_resp["ok"] is True, text_resp
+    assert text_resp["result"]["text"] == "clicked"
+
+
+async def test_click_at_rejects_both_selector_and_at(
+    camoufox_sidecar: Sidecar,
+) -> None:
+    """Passing both selector and at is a structured invalid-args error."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, FIXTURE_URL)
+
+    await sc.send(
+        {
+            "id": 10,
+            "cmd": "page.click",
+            "args": {"selector": "#submit", "at": [1, 2]},
+        }
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is False, resp
+    assert resp["error"]["code"] == "invalid-args", resp
+
+
+async def test_click_at_rejects_non_numeric_coords(
+    camoufox_sidecar: Sidecar,
+) -> None:
+    """Non-numeric coords surface invalid-args rather than crashing Playwright."""
+    sc = camoufox_sidecar
+    await _launch_and_goto(sc, FIXTURE_URL)
+
+    await sc.send(
+        {"id": 10, "cmd": "page.click", "args": {"at": ["x", "y"]}}
+    )
+    resp = await sc.read_frame(timeout=10.0)
+    assert resp["ok"] is False, resp
+    assert resp["error"]["code"] == "invalid-args", resp
+
+
 async def test_selector_not_found_returns_structured_error(
     camoufox_sidecar: Sidecar,
 ) -> None:

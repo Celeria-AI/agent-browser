@@ -27,6 +27,13 @@ from .protocol import Protocol, log
 from .refs import RefCache, RefStale, parse_ref
 from .snapshot import SnapshotError, take_snapshot
 
+# Kwargs defaulted to True when the caller doesn't pass them. Camoufox ships
+# both off by default: humanize replaces teleport-clicks with realistic mouse
+# paths, block_webrtc hides the real IP from WAFs that inspect RTCIceCandidate.
+# Not defaulting these leaves obvious anti-bot value on the table. An explicit
+# False from the caller (e.g. deterministic test runs) is preserved.
+DEFAULT_TRUE_LAUNCH_KWARGS: tuple[str, ...] = ("humanize", "block_webrtc")
+
 # Allowlist derived from https://camoufox.com/python/usage/ — keep in sync with
 # the plan's Unit 2 Approach. New kwargs must be added deliberately so the
 # Rust side knows to expose them; silently passing unknown kwargs through is a
@@ -509,12 +516,31 @@ class Session:
 
     async def click(self, args: Optional[dict] = None) -> dict:
         args = args or {}
-        selector_or_ref = _require_str(args, "selector")
         button = args.get("button", "left")
         click_count = int(args.get("clickCount", 1) or 1)
         timeout = int(args.get("timeoutMs") or DEFAULT_ACTION_TIMEOUT_MS)
 
+        at = args.get("at")
+        selector_or_ref = args.get("selector")
+        has_at = at is not None
+        has_selector = isinstance(selector_or_ref, str) and selector_or_ref != ""
+        if has_at == has_selector:
+            raise LaunchError(
+                "invalid-args",
+                "click requires exactly one of `selector` or `at`, not both",
+            )
+
         tab = await self._tab_for(args)
+
+        if has_at:
+            x, y = _parse_at(at)
+            try:
+                await tab.page.mouse.click(x, y, button=button, click_count=click_count)
+            except Exception as exc:  # noqa: BLE001
+                raise LaunchError("action-failed", str(exc)) from exc
+            return {"clicked": {"x": x, "y": y}, "tabId": tab.tab_id}
+
+        assert isinstance(selector_or_ref, str)
         ref_id = parse_ref(selector_or_ref)
         if ref_id is not None:
             handle = _require_ref(tab, ref_id)
@@ -686,6 +712,29 @@ def _require_str(args: dict, key: str) -> str:
     return value
 
 
+def _parse_at(raw: Any) -> tuple[float, float]:
+    """Validate and coerce a coordinate pair for click-at.
+
+    Rust wire shape is a two-element array ``[x, y]``. Booleans are rejected
+    explicitly because ``isinstance(True, int)`` is ``True`` and would
+    otherwise silently click at ``(1, 0)``.
+    """
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        raise LaunchError(
+            "invalid-args",
+            "`at` must be a two-element [x, y] array",
+        )
+    coords = []
+    for axis, value in zip(("x", "y"), raw):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise LaunchError(
+                "invalid-args",
+                f"`at.{axis}` must be a number, got {type(value).__name__}",
+            )
+        coords.append(float(value))
+    return coords[0], coords[1]
+
+
 def _require_ref(tab: Tab, ref_id: str) -> Any:
     try:
         return tab.refs.require(ref_id)
@@ -835,7 +884,10 @@ def _validate_launch_args(args: dict) -> dict:
             "unknown-launch-option",
             f"unknown launch option(s): {unknown}",
         )
-    return dict(args)
+    resolved = dict(args)
+    for kwarg in DEFAULT_TRUE_LAUNCH_KWARGS:
+        resolved.setdefault(kwarg, True)
+    return resolved
 
 
 def _looks_like_missing_binary(message: str) -> bool:
